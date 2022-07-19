@@ -1,4 +1,4 @@
-from re import match as re_match, findall as re_findall
+from re import findall as re_findall
 from threading import Thread, Event
 from time import time
 from math import ceil
@@ -158,7 +158,7 @@ def get_readable_message():
             if STATUS_LIMIT is not None and index == STATUS_LIMIT:
                 break
         if len(msg) == 0:
-            return None
+            return None, None
         bmsg = f"<b>CPU:</b> {cpu_percent()}% | <b>FREE:</b> {get_readable_file_size(disk_usage(DOWNLOAD_DIR).free)}"
         bmsg += f"\n<b>RAM:</b> {virtual_memory().percent}% | <b>UPTIME:</b> {get_readable_time(time() - botStartTime)}"
         dlspeed_bytes = 0
@@ -272,4 +272,3 @@ def get_content_type(link: str) -> str:
         except:
             content_type = None
     return content_type
-

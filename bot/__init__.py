@@ -156,7 +156,6 @@ except:
     log_error("One or more env variables missing! Exiting now")
     exit(1)
 
-LOGGER.info("Generating SESSION_STRING")
 try:
     IS_PREMIUM_USER = False
     USER_SESSION_STRING = getConfig('USER_SESSION_STRING')
@@ -236,15 +235,15 @@ try:
 except:
     DB_URI = None
 try:
-    TG_SPLIT_SIZE = getConfig('TG_SPLIT_SIZE')
-    if len(TG_SPLIT_SIZE) == 0 or (not IS_PREMIUM_USER and TG_SPLIT_SIZE > 2097152000) or TG_SPLIT_SIZE > 4194304000:
+    LEECH_SPLIT_SIZE = getConfig('LEECH_SPLIT_SIZE')
+    if len(LEECH_SPLIT_SIZE) == 0 or (not IS_PREMIUM_USER and LEECH_SPLIT_SIZE > 2097152000) or LEECH_SPLIT_SIZE > 4194304000:
         raise KeyError
-    TG_SPLIT_SIZE = int(TG_SPLIT_SIZE)
+    LEECH_SPLIT_SIZE = int(LEECH_SPLIT_SIZE)
 except:
     if not IS_PREMIUM_USER:
-        TG_SPLIT_SIZE = 2097152000
+        LEECH_SPLIT_SIZE = 2097152000
     else:
-        TG_SPLIT_SIZE = 4194304000
+        LEECH_SPLIT_SIZE = 4194304000
 try:
     STATUS_LIMIT = getConfig('STATUS_LIMIT')
     if len(STATUS_LIMIT) == 0:
@@ -361,12 +360,6 @@ try:
         raise KeyError
 except:
     CUSTOM_FILENAME = None
-try:
-    CRYPT = getConfig('CRYPT')
-    if len(CRYPT) == 0:
-        raise KeyError
-except:
-    CRYPT = None
 try:
     TOKEN_PICKLE_URL = getConfig('TOKEN_PICKLE_URL')
     if len(TOKEN_PICKLE_URL) == 0:

@@ -16,9 +16,9 @@ from lk21 import Bypass
 from cfscrape import create_scraper
 from bs4 import BeautifulSoup
 from base64 import standard_b64encode
+from time import sleep
 
 from bot import LOGGER, UPTOBOX_TOKEN
-from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.ext_utils.exceptions import DirectDownloadLinkException
 
 fmed_list = ['fembed.net', 'fembed.com', 'femax20.com', 'fcdn.stream', 'feurl.com', 'layarkacaxxi.icu',
@@ -28,7 +28,7 @@ fmed_list = ['fembed.net', 'fembed.com', 'femax20.com', 'fcdn.stream', 'feurl.co
 def direct_link_generator(link: str):
     """ direct links generator """
     if 'youtube.com' in link or 'youtu.be' in link:
-        raise DirectDownloadLinkException(f"ERROR: Use /{BotCommands.WatchCommand} to mirror Youtube link\nUse /{BotCommands.ZipWatchCommand} to make zip of Youtube playlist")
+        raise DirectDownloadLinkException(f"ERROR: Use watch cmds for Youtube links")
     elif 'yadi.sk' in link or 'disk.yandex.com' in link:
         return yandex_disk(link)
     elif 'mediafire.com' in link:
@@ -63,6 +63,8 @@ def direct_link_generator(link: str):
         return solidfiles(link)
     elif 'krakenfiles.com' in link:
         return krakenfiles(link)
+    elif 'upload.ee' in link:
+        return uploadee(link)
     elif any(x in link for x in fmed_list):
         return fembed(link)
     elif any(x in link for x in ['sbembed.com', 'watchsb.com', 'streamsb.net', 'sbplay.org']):
@@ -81,15 +83,15 @@ def yandex_disk(url: str) -> str:
     try:
         return rget(api.format(link)).json()['href']
     except KeyError:
-        raise DirectDownloadLinkException("ERROR: File not found/Download limit reached\n")
+        raise DirectDownloadLinkException("ERROR: File not found/Download limit reached")
 
 def uptobox(url: str) -> str:
     """ Uptobox direct link generator
-    based on https://github.com/jovanzers/WinTenCermin """
+    based on https://github.com/jovanzers/WinTenCermin and https://github.com/sinoobie/noobie-mirror """
     try:
         link = re_findall(r'\bhttps?://.*uptobox\.com\S+', url)[0]
     except IndexError:
-        raise DirectDownloadLinkException("No Uptobox links found\n")
+        raise DirectDownloadLinkException("No Uptobox links found")
     if UPTOBOX_TOKEN is None:
         LOGGER.error('UPTOBOX_TOKEN not provided!')
         dl_url = link
@@ -99,10 +101,24 @@ def uptobox(url: str) -> str:
             dl_url = link
         except:
             file_id = re_findall(r'\bhttps?://.*uptobox\.com/(\w+)', url)[0]
-            file_link = 'https://uptobox.com/api/link?token=%s&file_code=%s' % (UPTOBOX_TOKEN, file_id)
+            file_link = f'https://uptobox.com/api/link?token={UPTOBOX_TOKEN}&file_code={file_id}'
             req = rget(file_link)
             result = req.json()
-            dl_url = result['data']['dlLink']
+            if result['message'].lower() == 'success':
+                dl_url = result['data']['dlLink']
+            elif result['message'].lower() == 'waiting needed':
+                waiting_time = result["data"]["waiting"] + 1
+                waiting_token = result["data"]["waitingToken"]
+                sleep(waiting_time)
+                req2 = rget(f"{file_link}&waitingToken={waiting_token}")
+                result2 = req2.json()
+                dl_url = result2['data']['dlLink']
+            elif result['message'].lower() == 'you need to wait before requesting a new download link':
+                cooldown = divmod(result['data']['waiting'], 60)
+                raise DirectDownloadLinkException(f"ERROR: Uptobox is being limited please wait {cooldown[0]} min {cooldown[1]} sec.")
+            else:
+                LOGGER.info(f"UPTOBOX_ERROR: {result}")
+                raise DirectDownloadLinkException(f"ERROR: {result['message']}")
     return dl_url
 
 def mediafire(url: str) -> str:
@@ -110,7 +126,7 @@ def mediafire(url: str) -> str:
     try:
         link = re_findall(r'\bhttps?://.*mediafire\.com\S+', url)[0]
     except IndexError:
-        raise DirectDownloadLinkException("No MediaFire links found\n")
+        raise DirectDownloadLinkException("No MediaFire links found")
     page = BeautifulSoup(rget(link).content, 'lxml')
     info = page.find('a', {'aria-label': 'Download file'})
     return info.get('href')
@@ -121,7 +137,7 @@ def osdn(url: str) -> str:
     try:
         link = re_findall(r'\bhttps?://.*osdn\.net\S+', url)[0]
     except IndexError:
-        raise DirectDownloadLinkException("No OSDN links found\n")
+        raise DirectDownloadLinkException("No OSDN links found")
     page = BeautifulSoup(
         rget(link, allow_redirects=True).content, 'lxml')
     info = page.find('a', {'class': 'mirror_link'})
@@ -138,12 +154,12 @@ def github(url: str) -> str:
     try:
         re_findall(r'\bhttps?://.*github\.com.*releases\S+', url)[0]
     except IndexError:
-        raise DirectDownloadLinkException("No GitHub Releases links found\n")
+        raise DirectDownloadLinkException("No GitHub Releases links found")
     download = rget(url, stream=True, allow_redirects=False)
     try:
         return download.headers["location"]
     except KeyError:
-        raise DirectDownloadLinkException("ERROR: Can't extract the link\n")
+        raise DirectDownloadLinkException("ERROR: Can't extract the link")
 
 def hxfile(url: str) -> str:
     """ Hxfile direct link generator
@@ -194,8 +210,7 @@ def onedrive(link: str) -> str:
     resp = rhead(direct_link1)
     if resp.status_code != 302:
         raise DirectDownloadLinkException("ERROR: Unauthorized link, the link may be private")
-    dl_link = resp.next.url
-    return dl_link
+    return resp.next.url
 
 def pixeldrain(url: str) -> str:
     """ Based on https://github.com/yash-dk/TorToolkit-Telegram """
@@ -211,7 +226,7 @@ def pixeldrain(url: str) -> str:
     if resp["success"]:
         return dl_link
     else:
-        raise DirectDownloadLinkException("ERROR: Cant't download due {}.".format(resp["message"]))
+        raise DirectDownloadLinkException(f"ERROR: Cant't download due {resp['message']}.")
 
 def antfiles(url: str) -> str:
     """ Antfiles direct link generator
@@ -232,7 +247,7 @@ def racaty(url: str) -> str:
     try:
         re_findall(r'\bhttps?://.*racaty\.net\S+', url)[0]
     except IndexError:
-        raise DirectDownloadLinkException("No Racaty links found\n")
+        raise DirectDownloadLinkException("No Racaty links found")
     scraper = create_scraper()
     r = scraper.get(url)
     soup = BeautifulSoup(r.text, "lxml")
@@ -283,7 +298,7 @@ def fichier(link: str) -> str:
             else:
                 raise DirectDownloadLinkException(f"ERROR: 1fichier is on a limit. Please wait {numbers[0]} minute.")
         elif "protect access" in str(str_2).lower():
-          raise DirectDownloadLinkException(f"ERROR: This link requires a password!\n\n<b>This link requires a password!</b>\n- Insert sign <b>::</b> after the link and write the password after the sign.\n\n<b>Example:</b>\n<code>/{BotCommands.MirrorCommand} https://1fichier.com/?smmtd8twfpm66awbqz04::love you</code>\n\n* No spaces between the signs <b>::</b>\n* For the password, you can use a space!")
+          raise DirectDownloadLinkException(f"ERROR: This link requires a password!\n\n<b>This link requires a password!</b>\n- Insert sign <b>::</b> after the link and write the password after the sign.\n\n<b>Example:</b> https://1fichier.com/?smmtd8twfpm66awbqz04::love you\n\n* No spaces between the signs <b>::</b>\n* For the password, you can use a space!")
         else:
             raise DirectDownloadLinkException("ERROR: Error trying to generate Direct Link from 1fichier!")
     elif len(soup.find_all("div", {"class": "ct_warn"})) == 3:
@@ -329,8 +344,7 @@ def krakenfiles(page_link: str) -> str:
         for item in soup.find_all("div", attrs={"data-file-hash": True})
     ]
     if not hashes:
-        raise DirectDownloadLinkException(
-            f"Hash not found for : {page_link}")
+        raise DirectDownloadLinkException(f"ERROR: Hash not found for : {page_link}")
 
     dl_hash = hashes[0]
 
@@ -349,5 +363,14 @@ def krakenfiles(page_link: str) -> str:
     if "url" in dl_link_json:
         return dl_link_json["url"]
     else:
-        raise DirectDownloadLinkException(
-            f"Failed to acquire download URL from kraken for : {page_link}")
+        raise DirectDownloadLinkException(f"ERROR: Failed to acquire download URL from kraken for : {page_link}")
+
+def uploadee(url: str) -> str:
+    """ uploadee direct link generator
+    By https://github.com/iron-heart-x"""
+    try:
+        soup = BeautifulSoup(rget(url).content, 'lxml')
+        sa = soup.find('a', attrs={'id':'d_l'})
+        return sa['href']
+    except:
+        raise DirectDownloadLinkException(f"ERROR: Failed to acquire download URL from upload.ee for : {url}")
